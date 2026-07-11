@@ -106,7 +106,7 @@
       <button data-th="dark">Dark</button>
     </div>
     <div id="rows"></div>
-    <div class="foot">drag · scroll · enjoy · r20</div>
+    <div class="foot">drag · scroll · enjoy · r30</div>
   </div>
 </div>
 
@@ -873,7 +873,9 @@ function buildImperialModel(){
   /* collar ring, trumpet bell (lip ~2.5x shaft radius), chunky barrel */
   metal.push(revolve(P([[13.3,340],[16.5,343],[16.5,349],[14,352]]),48));
   metal.push(revolve(P([[14,352],[15,362],[18.5,382],[24,400],[29.5,416],[32.8,426],[33.8,430],[33.8,435],[32.5,437]]),48));
-  metal.push(revolve(P([[32.5,437],[34.5,447],[35,477],[34.5,507],[35.5,511],[35.5,517],[33,521],[0,521]]),48));
+  /* barrel with a three-ring band at its top, then a smooth bare rod up to
+     the spike attachment — the space alongside it belongs to the lion */
+  metal.push(revolve(P([[32.5,437],[34.5,447],[35,477],[34.5,503],[35.5,507],[35.5,514],[28,517],[28,595.5],[0,595.5]]),48));
 
   /* four identical snail volutes at the diagonals — exactly 45 deg off
      the spikes, tread riding the rod. Per crude_swirl_drawing.png each
@@ -941,35 +943,42 @@ function buildImperialModel(){
      four-sided pyramid (base 41.5 square, height ~2x base) on a short square
      collar, its corners BETWEEN the blades (STL: blade tips at the print
      diagonals, pyramid corners at the cardinals), over a round boss */
-  metal.push(revolve(P([[0,521],[26,522],[28,530],[28,588],[21,593],[0,593]]),48));
-  { const pyr=revolve(P([[0,592],[20.75,592],[20.75,602],[0,686]]),4);
-    const rr=Math.SQRT1_2;
-    pyr.v=pyr.v.map(([x,y,z])=>[(x-z)*rr,y,(x+z)*rr]);
-    crystal.push(pyr);
-    const c45=R(20.75)*rr, yb=Y(602), ap=[0,Y(686),0];
-    for(const [A3,B3] of [[[c45,yb,c45],[-c45,yb,c45]],[[c45,yb,-c45],[c45,yb,c45]]]){
-      let n=triN(ap,A3,B3);
-      if(V3.dot(n,[A3[0]+B3[0],0,A3[2]+B3[2]])<0) n=V3.scale(n,-1);
+  /* the very top: a simple four-sided pyramid straight off the rod — its
+     corners at the spike azimuths, each base corner meeting the top corner
+     of a spike's base diamond so the edge lines flow into the spikes */
+  { crystal.push(revolve(P([[0,595.8],[28,595.8],[0,686]]),4));
+    const yb=Y(595.8), ap=[0,Y(686),0];
+    const cX=[R(28),yb,0], cZ=[0,yb,R(28)], cNX=[-R(28),yb,0];
+    for(const [A3,B3] of [[cX,cZ],[cZ,cNX]]){
+      let n=triN(ap,A3,B3); if(n[2]<0) n=V3.scale(n,-1);
       const m0=mix3(A3,B3,0.5);
       reflC.push({a:lift(mix3(m0,ap,0.12),n,0.004),b:lift(mix3(m0,ap,0.70),n,0.004),nL:n,nR:n});
     }
   }
-  /* four identical blades, one per 90 degrees around the axis (verified:
-     scan tips form a square at equal height/radius). Profile measured from
-     the scan wedge: steep root rise, then the top ridge breaks to a near
-     flat run — each segment flatter than the last — while the belly sweeps
-     up to meet it at a top-corner tip. Six facets show per side. */
+  /* four identical blades, one per 90 degrees around the axis. Cross
+     section is a diamond taller than wide (tight corners up/down, wide
+     corners sideways); the base diamond sits on the neck and the four
+     corner lines run to the point through two oblique rings. Slope regime
+     per the scan wedge: gentle out of the base (~23 deg), STEEP after the
+     first oblique (~50 deg), easing again to the tip (~30 deg). The base
+     diamond is the tallest ring: opposite corner chains only ever converge
+     going outward (top and bottom both rise, closing on each other). */
   const wing=az=>{
     const u=[Math.sin(az),0,Math.cos(az)], t=[Math.cos(az),0,-Math.sin(az)];
     const IP=(rho,y)=>[u[0]*R(rho),Y(y),u[2]*R(rho)];
     const TP2=(rho,y,d)=>[u[0]*R(rho)+t[0]*R(d),Y(y),u[2]*R(rho)+t[2]*R(d)];
-    const ring=(rho,yU,yL,ht)=>{const yc=(yU+yL)/2;
-      return [IP(rho,yU),TP2(rho,yc,ht),IP(rho,yL),TP2(rho,yc,-ht)];};
-    const r0=ring(33,592,572.5,8), r1=ring(55,614.5,583.6,7.5), r2=ring(76.5,618.4,609,4.5);
-    const RT=IP(19,580), TIP=IP(95,622.5);
-    const v=[...r0,...r1,...r2,RT,TIP], f=[];
+    const ring=(rho,yU,yL,ht,sweep)=>{
+      const yc=(yU+yL)/2, v=sweep?0.85*ht:0, d=sweep?0.26*(yU-yL):0;
+      /* oblique rings only: side corners swept back toward the rod (a V
+         pointing at the staff centre from the side) and dropped below the
+         midline so the top and bottom face areas read about equal;
+         the base diamond stays flat and symmetric on the neck */
+      return [IP(rho,yU),TP2(rho-v,yc-d,ht),IP(rho,yL),TP2(rho-v,yc-d,-ht)];};
+    const r0=ring(28,596,556,11), r1=ring(62,607,569.5,9,1), r2=ring(75,615.5,592,7,1);
+    const TIP=IP(103,617);
+    const v=[...r0,...r1,...r2,TIP], f=[];
     for(let k=0;k<4;k++){const k2=(k+1)%4;
-      f.push([k,4+k,4+k2,k2],[4+k,8+k,8+k2,4+k2],[8+k,13,8+k2],[k2,12,k]);
+      f.push([k,4+k,4+k2,k2],[4+k,8+k,8+k2,4+k2],[8+k,12,8+k2]);
     }
     crystal.push({v,f});
     for(const [ka,kb] of [[0,1],[3,0]]){
@@ -993,7 +1002,10 @@ function buildImperialModel(){
 
   const mMetal=mergeMeshes(metal), mCrystal=mergeMeshes(crystal);
   const eMetal=featureEdges(mMetal,9).concat(lines);
-  const eCrystal=featureEdges(mCrystal,9);
+  /* 5 deg threshold: the oblique-ring segments sit at 6.3-7.5 deg and must
+   all draw; the only crystal edges are these rings + steep corner chains,
+   so nothing else emerges */
+const eCrystal=featureEdges(mCrystal,5);
   return {
     label:"Imperial", halfH:1.44, halfW:0.40, headY:0.97,
     batches:[
