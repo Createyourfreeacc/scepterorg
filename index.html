@@ -106,7 +106,7 @@
       <button data-th="dark">Dark</button>
     </div>
     <div id="rows"></div>
-    <div class="foot">drag · scroll · enjoy · r18</div>
+    <div class="foot">drag · scroll · enjoy · r20</div>
   </div>
 </div>
 
@@ -875,11 +875,11 @@ function buildImperialModel(){
   metal.push(revolve(P([[14,352],[15,362],[18.5,382],[24,400],[29.5,416],[32.8,426],[33.8,430],[33.8,435],[32.5,437]]),48));
   metal.push(revolve(P([[32.5,437],[34.5,447],[35,477],[34.5,507],[35.5,511],[35.5,517],[33,521],[0,521]]),48));
 
-  /* four identical snail volutes at the diagonals — exactly 45 deg off the
-     spikes. Each tire stands tread-first against the rod — a wheel
-     rolling on the staff (axis tangential), so neighbouring axes stay
-     90 deg apart and the inner tread edge embeds into the bell flank —
-     no stem. Coil R~25, centres ~50 out, per the webp. */
+  /* four identical snail volutes at the diagonals — exactly 45 deg off
+     the spikes, tread riding the rod. Per crude_swirl_drawing.png each
+     volute GROWS OUT OF THE ROD: a band peels off the barrel high on the
+     inner side, arcs over the crest, wraps the tread and coils in — the
+     outer whorl is continuous with the staff. Swirl ~1.67 turns. */
   const snail=deg=>{
     const th=deg*Math.PI/180, rd=[Math.sin(th),0,Math.cos(th)], td=[Math.cos(th),0,-Math.sin(th)];
     const D=50, Yc=426, RR=R(25), hw=R(8);
@@ -897,23 +897,44 @@ function buildImperialModel(){
       f.push([k,k2,seg+k2,seg+k],[2*seg,k2,k],[2*seg+1,seg+k,seg+k2]);
     }
     metal.push({v,f});
+    /* the base tail: a slim band sweeping out of the bell, under the coil,
+       landing on the tread at the lower-inner quadrant (per the webp: the
+       whorl exits the coil toward the rod and merges into the goblet) */
+    { const ST=[[23,397.5],[27.5,399],[32,400.8],[35.2,402.2],[37.3,403.4]];
+      const hv=[],hf=[];
+      for(let i=0;i<ST.length;i++){
+        const [rr2,yy]=ST[i];
+        const nx=i+1<ST.length?ST[i+1]:ST[i], pv=i>0?ST[i-1]:ST[i];
+        const dR=nx[0]-pv[0], dY=nx[1]-pv[1], L2=Math.hypot(dR,dY);
+        const nR=-dY/L2, nY=dR/L2;              // path normal in (radial,y)
+        for(const [su,sn] of [[1,1],[-1,1],[-1,-1],[1,-1]])
+          hv.push([rd[0]*R(rr2+nR*2*sn)+u[0]*R(7.2)*su,
+                   Y(yy+nY*2*sn),
+                   rd[2]*R(rr2+nR*2*sn)+u[2]*R(7.2)*su]);
+      }
+      for(let i=0;i<ST.length-1;i++){
+        const o=i*4;
+        for(let k=0;k<4;k++){const k2=(k+1)%4;
+          hf.push([o+k,o+4+k,o+4+k2,o+k2]);
+        }
+      }
+      hf.push([0,1,2,3],[(ST.length-1)*4+3,(ST.length-1)*4+2,(ST.length-1)*4+1,(ST.length-1)*4]);
+      metal.push({v:hv,f:hf});
+    }
+    /* the swirl line: from the tail exit, one wrap round the tread, then
+       coiling to the eye — ~1.67 turns, drawn on both faces */
     for(const s of [-1,1]){
       const sp=[];
-      for(let i=0;i<=80;i++){
-        const q2=i/80, ang=Math.PI+q2*2.05*TAU, rho=RR*(0.94-0.78*q2);
-        sp.push([C[0]+(a[0]*Math.cos(ang)+b[0]*Math.sin(ang))*rho+u[0]*(hw+R(0.6))*s,
-                 C[1]+(a[1]*Math.cos(ang)+b[1]*Math.sin(ang))*rho+u[1]*(hw+R(0.6))*s,
-                 C[2]+(a[2]*Math.cos(ang)+b[2]*Math.sin(ang))*rho+u[2]*(hw+R(0.6))*s]);
+      for(let i=0;i<=100;i++){
+        const dg=210-600*(i/100), phi=dg*Math.PI/180;
+        const sw=210-dg;
+        const rho=sw<300 ? 26.5-2.5*(sw/300) : 24-17.5*((sw-300)/300);
+        sp.push([C[0]+(a[0]*Math.cos(phi)+b[0]*Math.sin(phi))*R(rho)+u[0]*(hw+R(0.6))*s,
+                 C[1]+(a[1]*Math.cos(phi)+b[1]*Math.sin(phi))*R(rho)+u[1]*(hw+R(0.6))*s,
+                 C[2]+(a[2]*Math.cos(phi)+b[2]*Math.sin(phi))*R(rho)+u[2]*(hw+R(0.6))*s]);
       }
       polylineEdges(lines,sp,()=>V3.scale(u,s),false);
     }
-    polylineEdges(lines,[[C[0]-a[0]*(RR+R(0.5))-u[0]*hw,C[1]-a[1]*(RR+R(0.5))-u[1]*hw,C[2]-u[2]*hw],
-                         [C[0]-a[0]*(RR+R(0.5))+u[0]*hw,C[1]-a[1]*(RR+R(0.5))+u[1]*hw,C[2]+u[2]*hw]],
-                  ()=>V3.scale(a,-1),false);
-    const tl=[]; const R1=RR+R(0.5);
-    for(const [fy,fr] of [[1.0,0],[0.9,0.36],[0.55,0.76],[0.26,1.04]])
-      tl.push([C[0]-a[0]*R1*fy-rd[0]*R1*fr,C[1]-a[1]*R1*fy,C[2]-rd[2]*R1*fr-a[2]*R1*fy]);
-    polylineEdges(lines,tl,p=>V3.norm([p[0],0.2,p[2]]),false);
   };
   snail(45); snail(135); snail(225); snail(315);
   /* the very top, verified against part_A_A_A_A_A + the webp: a very simple
