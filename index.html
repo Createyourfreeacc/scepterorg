@@ -106,7 +106,7 @@
       <button data-th="dark">Dark</button>
     </div>
     <div id="rows"></div>
-    <div class="foot">drag · scroll · enjoy · r31</div>
+    <div class="foot">drag · scroll · enjoy · r41</div>
   </div>
 </div>
 
@@ -947,16 +947,29 @@ function buildImperialModel(){
      four-sided pyramid (base 41.5 square, height ~2x base) on a short square
      collar, its corners BETWEEN the blades (STL: blade tips at the print
      diagonals, pyramid corners at the cardinals), over a round boss */
-  /* the very top: a simple four-sided pyramid straight off the rod — its
-     corners at the spike azimuths, each base corner meeting the top corner
-     of a spike's base diamond so the edge lines flow into the spikes */
-  { crystal.push(revolve(P([[0,595.8],[28,595.8],[0,686]]),4));
-    const yb=Y(595.8), ap=[0,Y(686),0];
-    const cX=[R(28),yb,0], cZ=[0,yb,R(28)], cNX=[-R(28),yb,0];
-    for(const [A3,B3] of [[cX,cZ],[cZ,cNX]]){
-      let n=triN(ap,A3,B3); if(n[2]<0) n=V3.scale(n,-1);
-      const m0=mix3(A3,B3,0.5);
-      reflC.push({a:lift(mix3(m0,ap,0.12),n,0.004),b:lift(mix3(m0,ap,0.70),n,0.004),nL:n,nR:n});
+  /* the very top: a slender four-sided spire straight off the rod — corners at
+     the spike azimuths, each base corner still landing on the top corner of a
+     spike's base diamond. The flanks bow a hair off the straight chord (a
+     quadratic Bezier), so the four corner lines curve inward as they climb:
+     8 deg off vertical at the base, 19 deg at the point. Every station bends
+     ~1.3 deg, well under the 5 deg threshold, so no rings emit across it. */
+  { const RB=28, YB=595.8, YA=712, BOW=6, NSEG=9;
+    const dl=Math.hypot(RB,YA-YB);
+    const cr=RB/2+BOW*(YA-YB)/dl, cyy=(YB+YA)/2+BOW*RB/dl;
+    const bz=u=>{const w=1-u; return [w*w*RB+2*w*u*cr, w*w*YB+2*w*u*cyy+u*u*YA];};
+    const bzT=u=>[2*(1-u)*(cr-RB)-2*u*cr, 2*(1-u)*(cyy-YB)+2*u*(YA-cyy)];
+    const prof=[[0,YB]];
+    for(let i=0;i<=NSEG;i++) prof.push(bz(i/NSEG));
+    crystal.push(revolve(P(prof),4));
+    /* gleam down the two faces that meet the eye, hugging the bowed flank */
+    for(const ab of [Math.PI*0.25,Math.PI*0.75]){
+      const ca=Math.cos(ab), sa=Math.sin(ab), K=Math.SQRT1_2;
+      const srf=u=>{const q=bz(u)[0]*K; return [R(q)*ca,Y(bz(u)[1]),R(q)*sa];};
+      const nrm=u=>{const [dr,dy]=bzT(u); return V3.norm([dy*ca,-K*dr,dy*sa]);};
+      for(let i=0;i<5;i++){
+        const u0=0.10+0.60*i/5, u1=0.10+0.60*(i+1)/5, n=nrm((u0+u1)/2);
+        reflC.push({a:lift(srf(u0),n,0.004),b:lift(srf(u1),n,0.004),nL:n,nR:n});
+      }
     }
   }
   /* four identical blades, one per 90 degrees around the axis. Cross
@@ -1011,7 +1024,7 @@ function buildImperialModel(){
    so nothing else emerges */
 const eCrystal=featureEdges(mCrystal,5);
   return {
-    label:"Imperial", halfH:1.44, halfW:0.40, headY:0.97,
+    label:"Imperial", halfH:1.55, halfW:0.40, headY:1.03,
     batches:[
       {lines:makeLineVAO(eMetal),   tris:makeMeshVAO(mMetal),   refl:makeLineVAO(reflM), kind:0, objR:1.25, gem:false},
       {lines:makeLineVAO(eCrystal), tris:makeMeshVAO(mCrystal), refl:makeLineVAO(reflC), kind:1, objR:1.1,  gem:false}
@@ -1129,6 +1142,313 @@ function buildSimpleModel(seed){
 }
 
 /* Regalia reflection streaks: gem table + pavilion, shaft face, collar cone */
+/* ---------------- Branch (the scepter with nothing added: a stick) ---------------- */
+function buildBranchModel(seed){
+  const rnd=(s=>{let t=s>>>0;return()=>{t+=0x6D2B79F5;let r=Math.imul(t^t>>>15,1|t);r^=r+Math.imul(r^r>>>7,61|r);return((r^r>>>14)>>>0)/4294967296;};})(seed||7);
+  const lift=(p,n,e)=>[p[0]+n[0]*e,p[1]+n[1]*e,p[2]+n[2]*e];
+  const len3=a=>Math.hypot(a[0],a[1],a[2]);
+  const SD=48;
+  const parts=[], lines=[], refl=[];
+
+  /* --- a limb: a crooked tapered loft you can query, graft onto and draw on.
+         Frames are parallel-transported in tube()'s convention, so the winding
+         comes out outward without a second thought. --- */
+  const makeLimb=(cAt,radAt,NS)=>{
+    const ST=[];
+    let Nv=null;
+    for(let i=0;i<NS;i++){
+      const t=i/(NS-1), h=0.004;
+      const T=V3.norm(V3.sub(cAt(Math.min(1,t+h)),cAt(Math.max(0,t-h))));
+      if(!Nv){ const ref=Math.abs(T[1])<0.9?[0,1,0]:[1,0,0]; Nv=V3.norm(V3.cross(ref,T)); }
+      else Nv=V3.norm(V3.sub(Nv,V3.scale(T,V3.dot(Nv,T))));
+      ST.push({c:cAt(t),T,N:[...Nv],B:V3.cross(Nv,T),r:radAt(t)});
+    }
+    const frame=t=>{
+      const x=Math.max(0,Math.min(1,t))*(NS-1), i=Math.min(NS-2,x|0), f=x-i;
+      const A=ST[i], Bs=ST[i+1];
+      const mx=(u,v)=>[u[0]+(v[0]-u[0])*f, u[1]+(v[1]-u[1])*f, u[2]+(v[2]-u[2])*f];
+      return {c:mx(A.c,Bs.c), T:V3.norm(mx(A.T,Bs.T)), N:V3.norm(mx(A.N,Bs.N)),
+              B:V3.norm(mx(A.B,Bs.B)), r:A.r+(Bs.r-A.r)*f};
+    };
+    const at=(t,az)=>{
+      const F=frame(t), ca=Math.cos(az), sa=Math.sin(az);
+      const n=V3.norm([F.N[0]*ca+F.B[0]*sa, F.N[1]*ca+F.B[1]*sa, F.N[2]*ca+F.B[2]*sa]);
+      return {p:[F.c[0]+n[0]*F.r, F.c[1]+n[1]*F.r, F.c[2]+n[2]*F.r], n, c:F.c, r:F.r, T:F.T};
+    };
+    const near=p=>{
+      let bt=0, bd=1e9;
+      for(let i=0;i<NS;i++){
+        const dx=p[0]-ST[i].c[0], dy=p[1]-ST[i].c[1], dz=p[2]-ST[i].c[2];
+        const d2=dx*dx+dy*dy+dz*dz;
+        if(d2<bd){ bd=d2; bt=i/(NS-1); }
+      }
+      return bt;
+    };
+    const off=p=>{
+      const F=frame(near(p)), d=V3.sub(p,F.c);
+      const rad=V3.sub(d,V3.scale(F.T,V3.dot(d,F.T)));
+      return {F, rad, d:len3(rad)};
+    };
+    return {ST, NS, frame, at,
+      inside:p=>{const o=off(p); return o.d<o.F.r;},
+      nAtP:p=>{const o=off(p); return o.d>1e-9?V3.scale(o.rad,1/o.d):[...o.F.N];}};
+  };
+
+  /* --- a saw cut: growth rings around an off-centre pith, and the radial
+         checks that open as the wood dries --- */
+  const cutFace=(S,tilt,sign,nRings)=>{
+    const e1=V3.norm([S.N[0]+S.T[0]*tilt, S.N[1]+S.T[1]*tilt, S.N[2]+S.T[2]*tilt]);
+    const e2=[...S.B];
+    let nC=V3.norm(V3.cross(e1,e2));
+    if(V3.dot(nC,S.T)*sign<0) nC=V3.scale(nC,-1);
+    const a0=S.r*Math.hypot(1,tilt), b0=S.r;
+    const px=(rnd()-0.5)*0.34*a0, py=(rnd()-0.5)*0.34*b0;
+    const P=(X,Y2)=>lift([S.c[0]+e1[0]*X+e2[0]*Y2, S.c[1]+e1[1]*X+e2[1]*Y2, S.c[2]+e1[2]*X+e2[2]*Y2],nC,0.004);
+    for(let g=1;g<=nRings;g++){
+      const sc=g/(nRings+0.7), pts=[];
+      for(let i=0;i<=40;i++){
+        const a=i/40*TAU;
+        pts.push(P(px+a0*sc*Math.cos(a), py+b0*sc*Math.sin(a)));
+      }
+      polylineEdges(lines,pts,()=>nC,true);
+    }
+    for(let g=0;g<2;g++){
+      const a=rnd()*TAU, Rr=s=>P(px+a0*s*Math.cos(a), py+b0*s*Math.sin(a));
+      polylineEdges(lines,[Rr(0.10),Rr(0.58),Rr(0.98)],()=>nC,false);
+    }
+    refl.push({a:P(px-a0*0.72,py+b0*0.12), b:P(px+a0*0.20,py+b0*0.42), nL:nC, nR:nC});
+  };
+
+  /* --- bark grain: long lines down a limb, swirling around every knot and fork.
+         The loft itself emits no feature edges, so this is what makes them read. --- */
+  const grain=(L,ks,NG,ta,tb)=>{
+    for(let g=0;g<NG;g++){
+      const az0=(g+0.35*rnd())/NG*TAU, drift=(rnd()-0.5)*1.15;
+      const wig=0.06+rnd()*0.12, wp=rnd()*TAU;
+      const t0=ta+rnd()*0.04, t1=tb-rnd()*0.04;
+      const pts=[];
+      for(let i=0;i<=44;i++){
+        const t=t0+(t1-t0)*i/44;
+        /* the deflection is measured from the undeflected line and pushed by a
+           smooth odd kernel — feed the running angle back in and lines sitting
+           over a knot flip sign every sample and corkscrew */
+        const base=az0+drift*t+wig*Math.sin(wp+t*4.2);
+        let az=base;
+        for(const k of ks){
+          let da=base-k.az;
+          while(da>Math.PI) da-=TAU;
+          while(da<-Math.PI) da+=TAU;
+          const x=da/0.85;
+          az+=Math.exp(-Math.pow((t-k.t)/k.w,2))*k.push*x*Math.exp(0.5-0.5*x*x);
+        }
+        const q=L.at(t,az);
+        pts.push(lift(q.p,q.n,0.0035));
+      }
+      polylineEdges(lines,pts,L.nAtP,false);
+    }
+  };
+
+  /* --- graft a limb onto a host. It starts at the host's pith, the way a real
+         branch does, and every generator is marched out of the wood: the mesh
+         begins at that seam, so the open boundary ring IS the branch collar and
+         the host's own solid seals it in hidden-line mode. --- */
+  const graft=(host,sp)=>{
+    const F0=host.frame(sp.t), S0=host.at(sp.t,sp.az);
+    const ss=Math.sin(sp.spread), cc=Math.cos(sp.spread);
+    const D=V3.norm([S0.n[0]*ss+F0.T[0]*cc, S0.n[1]*ss+F0.T[1]*cc, S0.n[2]*ss+F0.T[2]*cc]);
+    let side=V3.sub([0,1,0],V3.scale(D,V3.dot([0,1,0],D)));
+    side = len3(side)>1e-3 ? V3.scale(side,1/len3(side)) : [...S0.n];
+    const wob=V3.cross(D,side), wA=(sp.wob||0)*sp.len, wK=0.8+rnd()*0.6, wP=rnd()*TAU;
+    const curl=Math.min(sp.curl,0.35*Math.tan(sp.spread));
+    const B0=[...F0.c];
+    const cL=u=>{
+      const a=sp.len*u, c=curl*sp.len*u*u;
+      const w=wA*(Math.sin(wP+wK*u*TAU)-Math.sin(wP));
+      return [B0[0]+D[0]*a+side[0]*c+wob[0]*w,
+              B0[1]+D[1]*a+side[1]*c+wob[1]*w,
+              B0[2]+D[2]*a+side[2]*c+wob[2]*w];
+    };
+    const r0=F0.r*sp.rad;
+    const L=makeLimb(cL,u=>r0*(1-sp.taper*Math.pow(u,0.9)),sp.ns);
+
+    const seam=[], seamU=[];
+    for(let k=0;k<SD;k++){
+      const az=k*TAU/SD;
+      let lo=0, hi=0.80;
+      for(let i=1;i<=48;i++){
+        const u=i/48*0.80;
+        if(!host.inside(L.at(u,az).p)){ hi=u; lo=(i-1)/48*0.80; break; }
+      }
+      for(let i=0;i<14;i++){
+        const m=(lo+hi)/2;
+        if(host.inside(L.at(m,az).p)) lo=m; else hi=m;
+      }
+      seamU.push(hi); seam.push(L.at(hi,az).p);
+    }
+    const u1=Math.min(0.90,Math.max.apply(null,seamU)+0.03);
+
+    const m={v:[],f:[]}, rings=[], NR=20;
+    { const R0=[];
+      for(const p of seam){ R0.push(m.v.length); m.v.push(p); }
+      rings.push(R0);
+    }
+    for(let i=0;i<NR;i++){
+      const u=u1+(1-u1)*i/(NR-1), F=L.frame(u), ring=[];
+      for(let k=0;k<SD;k++){
+        const az=k*TAU/SD;
+        let p=L.at(u,az).p;
+        if(i===NR-1){
+          const cs=Math.cos(az)*F.r;
+          p=[p[0]+F.T[0]*sp.cut*cs, p[1]+F.T[1]*sp.cut*cs, p[2]+F.T[2]*sp.cut*cs];
+        }
+        ring.push(m.v.length); m.v.push(p);
+      }
+      rings.push(ring);
+    }
+    for(let i=0;i+1<rings.length;i++){
+      const A=rings[i], B=rings[i+1];
+      for(let k=0;k<SD;k++){const k2=(k+1)%SD; m.f.push([A[k],B[k],B[k2],A[k2]]);}
+    }
+    { const ic=m.v.length; m.v.push([...L.ST[L.NS-1].c]);
+      const RL=rings[rings.length-1];
+      for(let k=0;k<SD;k++){const k2=(k+1)%SD; m.f.push([RL[k],ic,RL[k2]]);}
+    }
+    parts.push(m);
+    cutFace(L.ST[L.NS-1],sp.cut,1,sp.rings);
+    const tSeam=Math.max.apply(null,seamU);
+    if(sp.grain) grain(L,sp.knots||[],sp.grain,tSeam+0.06,0.95);
+    return {L, tSeam};
+  };
+
+  /* --- the main stem --- */
+  const Y0=-1.26, Y1=1.30, LEN=Y1-Y0, CUT=0.42;
+  const A1=0.034+rnd()*0.030, K1=0.55+rnd()*0.55, P1=rnd()*TAU;
+  const A2=0.032+rnd()*0.030, K2=0.55+rnd()*0.55, P2=rnd()*TAU;
+  const A3=0.010+rnd()*0.009, K3=2.1+rnd()*0.9, P3=rnd()*TAU;
+  const A4=0.010+rnd()*0.009, K4=2.1+rnd()*0.9, P4=rnd()*TAU;
+  const lean=0.06+rnd()*0.07, lp=rnd()*TAU;
+  const cAt=t=>[A1*Math.sin(P1+K1*t*TAU)+A3*Math.sin(P3+K3*t*TAU)+Math.cos(lp)*lean*t*t,
+                Y0+LEN*t,
+                A2*Math.sin(P2+K2*t*TAU)+A4*Math.sin(P4+K4*t*TAU)+Math.sin(lp)*lean*t*t];
+
+  /* 0..4 branch-offs in the upper half, pruned stubs and healed scars below */
+  const NSPL=(rnd()*5)|0, splits=[], baseAz=rnd()*TAU;
+  for(let i=0;i<NSPL;i++) splits.push({
+    t:0.46+0.40*(i+0.30+rnd()*0.45)/NSPL,
+    az:baseAz+i*2.399+(rnd()-0.5)*0.7,
+    spread:0.50+rnd()*0.40, len:0.50+rnd()*0.54, rad:0.50+rnd()*0.22,
+    curl:0.14+rnd()*0.30, taper:0.45, cut:0.38, wob:0.020+rnd()*0.020,
+    ns:40, grain:7, rings:2
+  });
+  const stubs=[], NB=2+((rnd()*3)|0);
+  for(let i=0;i<NB;i++) stubs.push({
+    t:0.14+0.34*(i+0.25+rnd()*0.5)/NB, az:rnd()*TAU,
+    spread:0.60+rnd()*0.50, len:0.26+rnd()*0.10, rad:0.34+rnd()*0.14,
+    curl:0.05, taper:0.34, cut:0.34, wob:0,
+    ns:16, grain:0, rings:1
+  });
+  const scars=[]; const NSC=1+((rnd()*2)|0);
+  for(let i=0;i<NSC;i++) scars.push({t:0.12+rnd()*0.70, az:rnd()*TAU, rad:0.55+rnd()*0.35});
+
+  const rB=0.079+rnd()*0.015, rT=0.041+rnd()*0.009;
+  const smooth=(a,b,x)=>{const u=Math.max(0,Math.min(1,(x-a)/(b-a))); return u*u*(3-2*u);};
+  const radAt=t=>{
+    let r=rB+(rT-rB)*Math.pow(Math.max(0,Math.min(1,t)),0.8);
+    for(const k of stubs) r*=1+0.20*Math.exp(-Math.pow((t-k.t)/0.06,2));
+    for(const k of scars) r*=1+0.12*Math.exp(-Math.pow((t-k.t)/0.06,2));
+    for(const s of splits){
+      r*=1+0.26*Math.exp(-Math.pow((t-s.t)/0.055,2));   // the swelling at the crotch
+      r*=1-0.14*smooth(s.t-0.02,s.t+0.12,t);            // and the wood the fork takes
+    }
+    return r;
+  };
+  const stem=makeLimb(cAt,radAt,72);
+
+  { const m={v:[],f:[]}, rings=[];
+    for(let i=0;i<stem.NS;i++){
+      const S=stem.ST[i], ring=[];
+      for(let k=0;k<SD;k++){
+        const a=k*TAU/SD, cs=Math.cos(a)*S.r, sn=Math.sin(a)*S.r;
+        let p=[S.c[0]+S.N[0]*cs+S.B[0]*sn, S.c[1]+S.N[1]*cs+S.B[1]*sn, S.c[2]+S.N[2]*cs+S.B[2]*sn];
+        if(i===stem.NS-1) p=[p[0]+S.T[0]*CUT*cs, p[1]+S.T[1]*CUT*cs, p[2]+S.T[2]*CUT*cs];
+        ring.push(m.v.length); m.v.push(p);
+      }
+      rings.push(ring);
+    }
+    for(let i=0;i+1<stem.NS;i++){
+      const A=rings[i], B=rings[i+1];
+      for(let k=0;k<SD;k++){const k2=(k+1)%SD; m.f.push([A[k],B[k],B[k2],A[k2]]);}
+    }
+    const i0=m.v.length; m.v.push([...stem.ST[0].c]);
+    const i1=m.v.length; m.v.push([...stem.ST[stem.NS-1].c]);
+    const R0=rings[0], R1=rings[stem.NS-1];
+    for(let k=0;k<SD;k++){const k2=(k+1)%SD;
+      m.f.push([R0[k2],i0,R0[k]]);
+      m.f.push([R1[k],i1,R1[k2]]);
+    }
+    parts.push(m);
+  }
+
+  /* branch-offs first — a limb may carry a pruned stub of its own */
+  for(const s of splits){
+    const g=graft(stem,s);
+    if(rnd()<0.45) graft(g.L,{
+      t:Math.min(0.82,g.tSeam+0.22+rnd()*0.32), az:rnd()*TAU,
+      spread:0.65+rnd()*0.45, len:0.18+rnd()*0.08, rad:0.36+rnd()*0.14,
+      curl:0.05, taper:0.34, cut:0.34, wob:0, ns:16, grain:0, rings:1
+    });
+  }
+  for(const s of stubs) graft(stem,s);
+
+  /* healed scars: an oval of bark closing over an old knot */
+  for(const k of scars){
+    const S=stem.at(k.t,k.az), rr=S.r*k.rad;
+    const dt=1.7*rr/LEN, daz=1.7*rr/S.r;
+    for(const sc of [1.0,0.52]){
+      const pts=[];
+      for(let i=0;i<=30;i++){
+        const a=i/30*TAU;
+        const q=stem.at(k.t+dt*sc*Math.cos(a), k.az+daz*sc*Math.sin(a));
+        pts.push(lift(q.p,q.n,0.0035));
+      }
+      polylineEdges(lines,pts,stem.nAtP,true);
+    }
+  }
+
+  /* grain down the stem, swept around every stub, scar and crotch */
+  const gk=[];
+  for(const k of stubs) gk.push({t:k.t,az:k.az,w:0.11,push:0.42});
+  for(const k of scars) gk.push({t:k.t,az:k.az,w:0.11,push:0.26});
+  for(const k of splits) gk.push({t:k.t,az:k.az,w:0.17,push:0.62});
+  grain(stem,gk,14,0.012,0.985);
+  cutFace(stem.ST[stem.NS-1],CUT,1,3+((rnd()*2)|0));
+  cutFace(stem.ST[0],0,-1,2);
+
+  /* gleam: light running down the bark */
+  const streak=(az,t0,t1)=>{
+    let prev=null;
+    for(let i=0;i<=8;i++){
+      const q=stem.at(t0+(t1-t0)*i/8,az), p=lift(q.p,q.n,0.004);
+      if(prev) refl.push({a:prev,b:p,nL:q.n,nR:q.n});
+      prev=p;
+    }
+  };
+  streak(0.55,0.08,0.44); streak(0.66,0.52,0.90);
+
+  const mB=mergeMeshes(parts);
+  let xa=0,ya=0,za=0;
+  for(const v of mB.v){
+    xa=Math.max(xa,Math.abs(v[0])); ya=Math.max(ya,Math.abs(v[1])); za=Math.max(za,Math.abs(v[2]));
+  }
+  return {
+    label:"Branch", halfH:ya, halfW:Math.max(xa,za), headY:1.02,
+    batches:[
+      {lines:makeLineVAO(featureEdges(mB,9).concat(lines)), tris:makeMeshVAO(mB),
+       refl:makeLineVAO(refl), kind:0, objR:1.35, gem:false}
+    ]
+  };
+}
+
 const regaliaBodyRefl=[],regaliaGemRefl=[];
 {
   const az=Math.PI/3, n1=[Math.cos(az),0,Math.sin(az)];
@@ -1154,7 +1474,8 @@ const MODELS={
     ]
   },
   imperial:buildImperialModel(),
-  simple:buildSimpleModel(QSEED)
+  simple:buildSimpleModel(QSEED),
+  branch:buildBranchModel(QSEED)
 };
 if(window.SCEPTER_MODELS)
   for(const k of Object.keys(window.SCEPTER_MODELS)){
